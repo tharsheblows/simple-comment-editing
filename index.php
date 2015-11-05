@@ -69,7 +69,7 @@ class Simple_Comment_Editing {
 		
 		/* BEGIN ACTIONS */
 		//When a comment is posted
-		add_action( 'comment_post', array( $this, 'comment_posted' ),100,1 );
+		add_action( 'comment_post', array( $this, 'comment_posted' ), 100, 1 );
 		
 		//Loading scripts
 		add_filter( 'sce_load_scripts', array( $this, 'maybe_load_scripts' ), 5, 1 );
@@ -108,18 +108,20 @@ class Simple_Comment_Editing {
 	 * @since 1.0
 	 *
 	 */
-	public function add_edit_interface( $comment_content, $comment = false) {
+	public function add_edit_interface( $comment_content, $comment = false ){
 		if ( !$comment ) return $comment_content;
 				
 		$comment_id = absint( $comment->comment_ID );
 		$post_id = absint( $comment->comment_post_ID );
 		
 		//Check to see if a user can edit their comment
-		if ( !$this->can_edit( $comment_id, $post_id ) ) return $comment_content;
+		if ( !$this->can_edit( $comment_id, $post_id ) ){ 
+			return $comment_content; 
+		};
 		
 		//Variables for later
 		$original_content = $comment_content;
-		$raw_content = $comment->comment_content; //For later usage in the textarea
+		$raw_content = apply_filters( 'sce_comment_content', $comment->comment_content, $comment ); //For later usage in the textarea
 		
 		//Yay, user can edit - Add the initial wrapper
 		$comment_wrapper = sprintf( '<div id="sce-comment%d" class="sce-comment">%s</div>', $comment_id, $comment_content );	
@@ -268,13 +270,14 @@ class Simple_Comment_Editing {
 	 	$comment_id = absint( $_POST[ 'comment_id' ] );
 	 	$post_id = absint( $_POST[ 'post_id' ] );
 	 	
-	 	//Check if user can edit comment
+	 	//Check if user can edit comment using the basic save array
 	 	if ( !$this->can_edit( $comment_id, $post_id ) ) {
 	 		$response = array(
 	 			'minutes' => 0,
 	 			'seconds' => 0,
 	 			'comment_id' => 0,
-	 			'can_edit' => false
+	 			'can_edit' => false,
+	 			'allow_unlimited_time' => false 
 	 		);
 	 		die( json_encode( $response ) );
 	 	}
@@ -289,7 +292,8 @@ class Simple_Comment_Editing {
     			'minutes' => 0,
     			'comment_id' => $comment_id, 
     			'seconds' => 0,
-    			'can_edit' => false
+    			'can_edit' => apply_filters( 'sce_can_edit_after_time', false, $comment = '', $comment_id, $post_id ), // this filter is also applied in the save function
+    			'allow_unlimited_time' => apply_filters( 'sce_can_edit_after_time', false, $comment = '', $comment_id, $post_id )
     		);
     		die( json_encode( $response ) );
         }
@@ -299,7 +303,8 @@ class Simple_Comment_Editing {
 			'minutes' => $minutes,
 			'comment_id' => $comment_id, 
 			'seconds' => $seconds,
-			'can_edit' => true
+			'can_edit' => true,
+			'allow_unlimited_time' => false
 			
 		);
 		die( json_encode( $response ) );
@@ -417,10 +422,12 @@ class Simple_Comment_Editing {
 	 */
 	 public function ajax_save_comment() {
 		define( 'DOING_SCE', true );
-	 	$new_comment_content = trim( $_POST[ 'comment_content' ] );
-	 	$comment_id = absint( $_POST[ 'comment_id' ] );
-	 	$post_id = absint( $_POST[ 'post_id' ] );
-	 	$nonce = $_POST[ 'nonce' ];
+
+		$save_params = $_POST;
+	 	$new_comment_content = trim( $save_params[ 'comment_content' ] );
+	 	$comment_id = absint( $save_params[ 'comment_id' ] );
+	 	$post_id = absint( $save_params[ 'post_id' ] );
+	 	$nonce = $save_params[ 'nonce' ];
 	 	
 	 	$return = array();
 	 	$return[ 'errors' ] = false;
@@ -515,7 +522,7 @@ class Simple_Comment_Editing {
 		* @param int $comment_id The Comment ID
 		*/
 		ob_start();
-		do_action( 'sce_save_after', $comment_to_save, $post_id, $comment_id );
+		do_action( 'sce_save_after', $comment_to_save, $post_id, $comment_id, $save_params );
 		ob_end_clean();
 		
 		//If the comment was marked as spam, return an error
@@ -548,7 +555,8 @@ class Simple_Comment_Editing {
 		//Ajax response
 		$return[ 'comment_text' ] = $comment_content_to_return;
 		$return[ 'error' ] = '';
-		die( json_encode( $return ) );
+
+		die( json_encode( apply_filters( 'sce_save_return', $return, $comment_id, $post_id ) ) );
 	 } //end ajax_save_comment
 	 
 	 
@@ -570,34 +578,37 @@ class Simple_Comment_Editing {
 		//Check to see if time has elapsed for the comment
 		$comment_timestamp = strtotime( $comment->comment_date );
 		$time_elapsed = current_time( 'timestamp', get_option( 'gmt_offset' ) ) - $comment_timestamp;
-		$minutes_elapsed = ( ( ( $time_elapsed % 604800 ) % 86400 )  % 3600 ) / 60;
-		
-		if ( ( $minutes_elapsed - $this->comment_time ) >= 0 ) return false;
+		$minutes_elapsed = floor( $time_elapsed / 60 );
+
+		// $this->comment_time is the amount of time someone can edit. 
+		if ( ( $minutes_elapsed - $this->comment_time ) >= 0 ){
+			return apply_filters( 'sce_can_edit_after_time', false, $comment, $comment_id, $post_id );
+		}
 		
 		$comment_date_gmt = date( 'Y-m-d', strtotime( $comment->comment_date_gmt ) );
 		$cookie_hash = md5( $comment->comment_author_IP . $comment_date_gmt . $comment->user_id . $comment->comment_agent );
-			
+
 		if ( !is_user_logged_in() ) {
 			//Now check for post meta and cookie values being the same
 			
 			$cookie_value = $this->get_cookie_value( 'SimpleCommentEditing' . $comment_id . $cookie_hash );
-			if ( !$cookie_value ) return false;
-			$post_meta_hash = get_post_meta( $post_id, '_' . $comment_id, true );
+			if ( !$cookie_value ){
+				 return false;
+			}
+			$post_meta_hash = get_post_meta( $post_id, '_sce_comment_' . $comment_id, true );
 			
 			//Check to see if the cookie value matches the post meta hash
-			if ( $cookie_value !== $post_meta_hash ) return false;
+			if ( $cookie_value !== $post_meta_hash ){
+				 return false;
+			};
 		} else {
 			$user = wp_get_current_user();
 			
-			if ( $user->ID != $comment->user_id ) {
-				return false;
+			if ( (int)$user->ID !== (int)$comment->user_id ) {
+				return apply_filters( 'sce_can_edit_not_author', false, $comment, $comment_id, $post_id );
 			}						
 
-			$meta_hash = get_user_meta( $user->ID, '_' . $comment_id, true );	
-			if ( $meta_hash !== $cookie_hash ) {
-				return false;	
-			}
-			
+			// Don't do the usermeta / hash check
 		}
 		
 		
@@ -663,9 +674,12 @@ class Simple_Comment_Editing {
 		$min_security_keys = absint( apply_filters( 'sce_security_key_min', 100 ) );
 		if ( $security_key_count >= $min_security_keys ) {
 			global $wpdb;
-			$comment_id_to_exclude = "_" . $comment_id;
+			$comment_id_to_exclude = "_sce_comment_" . $comment_id;
 			/* Only delete the first 50 to make sure the bottom 50 aren't suddenly without to the ability to edit comments - Props Marco Pereirinha */
-			$wpdb->query( $wpdb->prepare( "delete from {$wpdb->postmeta} where left(meta_value, 6) = 'wpAjax' and meta_key <> %s ORDER BY {$wpdb->postmeta}.meta_id ASC LIMIT 50 ", $comment_id_to_exclude ) ); 
+			// this query needs optimisation -- don't search on meta value
+			// double escaping like this http://www.michaelbrentecklund.com/blog/using-wildcards-wordpress-database-queries-wildcard-wpdb-query/
+			// DELETE FROM {$wpdb->postmeta} WHERE `meta_key` LIKE '_sce_comment_%%' AND `meta_key` NOT LIKE '_sce_comment_%s'`meta_value` LIKE '\_wpAjax%% ORDER BY {$wpdb->postmeta}.meta_id ASC LIMIT 50 ' 
+			$query = query( $wpdb->prepare( "delete from {$wpdb->postmeta} where left(meta_value, 6) = 'wpAjax' and meta_key <> %s ORDER BY {$wpdb->postmeta}.meta_id ASC LIMIT 50 ", $comment_id_to_exclude ) ); 
 			$security_key_count = 1;
 		}
 		update_option( 'ajax-edit-comments_security_key_count', $security_key_count );
@@ -745,7 +759,10 @@ class Simple_Comment_Editing {
 		if ( function_exists( 'mb_convert_encoding' ) ) {
 			$comment_content_to_return = mb_convert_encoding( $comment_content_to_return, ''. get_option( 'blog_charset' ) . '', mb_detect_encoding( $comment_content_to_return, "UTF-8, ISO-8859-1, ISO-8859-15", true ) );
 		}
-		return apply_filters( 'comment_text', apply_filters( 'get_comment_text', $comment_content_to_return, $comment ), $comment );	
+		$filtered_comment = apply_filters( 'comment_text', apply_filters( 'get_comment_text', $comment_content_to_return, $comment ), $comment );
+
+		// so many filters! But just applying the standard filters and the one specifically for the editable comment content
+		return apply_filters( 'sce_comment_text', $filtered_comment, $comment );
 	}
 	
 	/**
@@ -786,21 +803,22 @@ class Simple_Comment_Editing {
 		
 		
 		$rand = '_wpAjax' . $hash . md5( wp_generate_password( 30, true, true ) );
-		$maybe_save_meta = get_post_meta( $post_id, '_' . $comment_id, true );
+		$maybe_save_meta = get_post_meta( $post_id, '_sce_comment_' . $comment_id, true );
 		$cookie_name = 'SimpleCommentEditing' . $comment_id . $hash;
 		$cookie_value = $rand;
 		$cookie_expire = time() + (  60 * $this->comment_time );
 		
 		/* Check to see if user is logged in and skip cookie checks */
+		/* you do not need to double check this and clutter up usermeta  */
 		if ( is_user_logged_in() ) {
-			$user = wp_get_current_user();
-			update_user_meta( $user->ID, '_' . $comment_id, $hash );
+			// $user = wp_get_current_user();
+			// update_user_meta( $user->ID, '_sce_comment_' . $comment_id, $hash );
 			return;
 		}
 		
 		if ( !$maybe_save_meta ) {
 			//Make sure we don't set post meta again for security reasons and subsequent calls to this method will generate a new key, so no calling it twice unless you want to remove a cookie
-			update_post_meta( $post_id, '_' . $comment_id, $rand );
+			update_post_meta( $post_id, '_sce_comment_' . $comment_id, $rand );
 		} else {
 			//Kinda evil, but if you try to call this method twice, removes the cookie
 			setcookie( $cookie_name, $cookie_value, time() - 60, COOKIEPATH,COOKIE_DOMAIN);

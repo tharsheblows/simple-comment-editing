@@ -1,6 +1,7 @@
 jQuery( document ).ready( function( $ ) {
 	sce = $.simplecommentediting = $.fn.simplecommentediting = function() {
 		var $this = this;
+
 		return this.each( function() {
 			var ajax_url = $( this ).find( 'a:first' ).attr( 'href' );
 			var ajax_params = wpAjax.unserialize( ajax_url );
@@ -31,6 +32,11 @@ jQuery( document ).ready( function( $ ) {
 			} );
 			
 			function sce_delete_comment( element, ajax_params ) {
+				var comment_to_delete = wp.hooks.applyFilters( 'sce.comment.div', '#comment-' + ajax_params.cid, element, ajax_params );
+				console.log( comment_to_delete );
+				console.log( element );
+				console.log( ajax_params );
+
                 $( element ).siblings( '.sce-textarea' ).off();	
 				$( element ).off();
 					
@@ -38,7 +44,7 @@ jQuery( document ).ready( function( $ ) {
 				$( element ).parent().remove();
 				$.post( ajax_url, { action: 'sce_delete_comment', comment_id: ajax_params.cid, post_id: ajax_params.pid, nonce: ajax_params._wpnonce }, function( response ) {
 						$( '#sce-edit-comment-status' + ajax_params.cid ).removeClass().addClass( 'sce-status updated' ).html( simple_comment_editing.comment_deleted ).show();
-						setTimeout( function() { $( "#comment-" + ajax_params.cid ).slideUp(); }, 5000 ); //Attempt to remove the comment from the theme interface
+						setTimeout( function() { $( comment_to_delete ).slideUp(); }, 5000 ); //Attempt to remove the comment from the theme interface
 				}, 'json' );
             };
 			
@@ -120,7 +126,7 @@ jQuery( document ).ready( function( $ ) {
 								if ( !response.errors ) {
 									$( '#sce-comment' + ajax_params.cid ).html( response.comment_text ); //Update comment HTML
 									sce.textareas[ ajax_params.cid  ] = $( '#sce-edit-comment' + ajax_params.cid  + ' textarea' ).val(); //Update textarea placeholder
-									
+
 									/**
 									* Event: sce.comment.save
 									*
@@ -131,7 +137,7 @@ jQuery( document ).ready( function( $ ) {
 									* @param int $comment_id The Comment ID
 									* @param int $post_id The Post ID
 									*/
-									jQuery( 'body' ).triggerHandler( 'sce.comment.save', [ ajax_params.cid, ajax_params.pid ] );
+									jQuery( 'body' ).triggerHandler( 'sce.comment.save', [ ajax_params.cid, ajax_params.pid, response ] );
 								} else {
 									//Output error, maybe kill interface
 									if ( response.remove == true ) {
@@ -162,6 +168,7 @@ jQuery( document ).ready( function( $ ) {
 				var minutes = parseInt( response.minutes );
 				var seconds = parseInt( response.seconds );
 				var timer_text = sce.get_timer_text( minutes, seconds );
+				var allow_unlimited_time = Boolean( response.allow_unlimited_time );
 				
 				//Determine via JS if a user can edit a comment - Note that if someone were to finnagle with this, there is still a server side check when saving the comment
 				var can_edit = response.can_edit;
@@ -176,7 +183,9 @@ jQuery( document ).ready( function( $ ) {
 				}
 				
 				//Update the timer and show the editing interface
-				$( element ).find( '.sce-timer' ).html( timer_text );
+				if( ! allow_unlimited_time ){
+					$( element ).find( '.sce-timer' ).html( timer_text );
+				}
 				$( element ).show( 400, function() {
 					/**
 					* Event: sce.timer.loaded
@@ -203,7 +212,7 @@ jQuery( document ).ready( function( $ ) {
 						
 						timer_seconds = sce.timers[ response.comment_id ].seconds - 1;
 						timer_minutes = sce.timers[ response.comment_id ].minutes;
-						if ( timer_minutes <=0 && timer_seconds <= 0) { 
+						if ( timer_minutes <=0 && timer_seconds <= 0 && ! allow_unlimited_time ) { 
 							
 							//Remove event handlers
 							$( element ).siblings( '.sce-textarea' ).off();	
@@ -212,7 +221,7 @@ jQuery( document ).ready( function( $ ) {
 							//Remove elements
 							$( element ).parent().remove();
 							return;
-						} else {
+						} else if( ! allow_unlimited_time ) {
 							if ( timer_seconds < 0 ) { 
 								timer_minutes -= 1; timer_seconds = 59;
 							} 
@@ -275,7 +284,7 @@ jQuery( document ).ready( function( $ ) {
 	sce.textareas = new Array();
 	$( '.sce-edit-button' ).simplecommentediting();
 	
-	$( '.sce-edit-button' ).on( 'sce.timer.loaded', SCE_comment_scroll );
+	$( '.sce-edit-button' ).on( 'sce.timer.loaded', wp.hooks.applyFilters( 'sce.comment.scroll', SCE_comment_scroll ) );
 	
 	//Third-party plugin compatibility
 	$( 'body' ).on( 'comment.posted', function( event, post_id, comment_id ) {

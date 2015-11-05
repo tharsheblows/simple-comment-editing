@@ -13,3 +13,6 @@ wp-content/backups/
 sitemap.xml
 sitemap.xml.gz
 .DS_Store
+node_modules/
+Gruntfile.js
+package.json
