@@ -16,3 +16,4 @@ sitemap.xml.gz
 node_modules/
 Gruntfile.js
 package.json
+js/simple-comment-editing.min.js
