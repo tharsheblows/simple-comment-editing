@@ -756,6 +756,7 @@ class Simple_Comment_Editing {
 	 * @return string Comment text
 	*/
 	private function get_comment_content( $comment ) {
+
 		$comment_content_to_return = $comment->comment_content;
 		
 		//Format the comment for returning

@@ -3,84 +3,122 @@ jQuery( document ).ready( function( $ ) {
 		var $this = this;
 
 		return this.each( function() {
+			
 			var ajax_url = $( this ).find( 'a:first' ).attr( 'href' );
 			var ajax_params = wpAjax.unserialize( ajax_url );
 			var element = this;
 
 			//Set up event for when the edit button is clicked
 			$( element ).on( 'click', 'a', function( e ) { 
+				
 				e.preventDefault();
-				$( '#sce-edit-comment-status' + ajax_params.cid ).removeClass().addClass( 'sce-status' ).css( 'display', 'none' );
+
+				$( 'body' ).triggerHandler( 'sce.edit.link.clicked', [ ajax_params.cid, ajax_params.pid ] );
+				
+				//$( '#sce-edit-comment-status' + ajax_params.cid ).removeClass().addClass( 'sce-status' ).velocity( 'fadeOut', { duration: 500 } );
+
+				$( '#sce-comment' + ajax_params.cid ).velocity( 'fadeOut', { duration: 500 } );
+
 				//Hide the edit button and show the textarea
-				$( element ).fadeOut( 'fast', function() {
-					$( element ).siblings( '.sce-textarea' ).find( 'button' ).prop( 'disabled', false );
-					$( element ).siblings( '.sce-textarea' ).fadeIn( 'fast', function() {
+				$( element ).siblings( '.sce-textarea' ).find( 'button' ).prop( 'disabled', false );
+				$( element ).siblings( '.sce-textarea' ).velocity( 'fadeIn', { duration: 500, complete:
+					function() {
 						$( element ).siblings( '.sce-textarea' ).find( 'textarea:first' ).focus();
-					} );
-				} );
+					} 
+				});
+				$( element ).velocity( 'fadeOut', { duration: 500 } );
+
+
+				// triggers a handler when the edit button is clicked
+				$( 'body' ).triggerHandler( 'sce.edit.after.form', [ ajax_params.cid, ajax_params.pid ] );
+			
 			} );
 			
 			//Cancel button
 			$( element ).siblings( '.sce-textarea' ).on( 'click', '.sce-comment-cancel', function( e ) {
-				e.preventDefault();
 				
+				e.preventDefault();				
 				//Hide the textarea and show the edit button
-				$( element ).siblings( '.sce-textarea' ).fadeOut( 'fast', function() {
-					$( element ).fadeIn( 'fast' );
-					$( '#sce-edit-comment' + ajax_params.cid  + ' textarea' ).val( sce.textareas[ ajax_params.cid  ] );
+				$( element ).siblings( '.sce-textarea' ).velocity( 'fadeOut', { duration: 500 } );
+				$( element ).velocity( 'fadeIn', { 
+					duration: 250, 
+					complete: function(){
+						$( '#sce-edit-comment' + ajax_params.cid  + ' textarea' ).val( sce.textareas[ ajax_params.cid  ] );
+						$( '#sce-comment' + ajax_params.cid ).velocity( 'fadeIn', { duration: 500 } );
+					}
 				} );
 			} );
+
 			
+			// delete the comment 
 			function sce_delete_comment( element, ajax_params ) {
+
 				var comment_to_delete = wp.hooks.applyFilters( 'sce.comment.div', '#comment-' + ajax_params.cid, element, ajax_params );
-				console.log( comment_to_delete );
-				console.log( element );
-				console.log( ajax_params );
 
                 $( element ).siblings( '.sce-textarea' ).off();	
 				$( element ).off();
 					
 				//Remove elements
 				$( element ).parent().remove();
-				$.post( ajax_url, { action: 'sce_delete_comment', comment_id: ajax_params.cid, post_id: ajax_params.pid, nonce: ajax_params._wpnonce }, function( response ) {
+
+				$.post( 
+					ajax_url, 
+					{ 
+						action: 'sce_delete_comment', 
+						comment_id: ajax_params.cid, 
+						post_id: ajax_params.pid, 
+						nonce: ajax_params._wpnonce 
+				 	}, 
+				 	function( response ) {
 						$( '#sce-edit-comment-status' + ajax_params.cid ).removeClass().addClass( 'sce-status updated' ).html( simple_comment_editing.comment_deleted ).show();
-						setTimeout( function() { $( comment_to_delete ).slideUp(); }, 5000 ); //Attempt to remove the comment from the theme interface
-				}, 'json' );
+						setTimeout( function() { $( comment_to_delete ).velocity( 'fadeOut', { duration: 500 } ); }, 5000 ); //Attempt to remove the comment from the theme interface
+					}, 
+					'json' 
+				);
             };
 			
+			// click the delete the comment button
 			$( element ).siblings( '.sce-textarea' ).on( 'click', '.sce-comment-delete', function( e ) {
+
     			e.preventDefault();
+    			
     			if ( confirm( simple_comment_editing.confirm_delete ) ) {
         		    sce_delete_comment( element, ajax_params );	
                 }
     			
             } );
 			
-			//Save button
+			// click the save the comment button
 			$( element ).siblings( '.sce-textarea' ).on( 'click', '.sce-comment-save', function( e ) {
+
 				e.preventDefault();
 				
 				$( element ).siblings( '.sce-textarea' ).find( 'button' ).prop( 'disabled', true );
-				$( element ).siblings( '.sce-textarea' ).fadeOut( 'fast', function() {
-					$( element ).siblings( '.sce-loading' ).fadeIn( 'fast' );
+				
+				$( element ).siblings( '.sce-textarea' ).velocity( 'fadeOut', { duration: 500, complete: function() {
+					
+					$( element ).siblings( '.sce-loading' ).velocity( 'slideDown', { duration: 250 } );
 					
 					//Save the comment
 					var textarea_val = $( element ).siblings( '.sce-textarea' ).find( 'textarea' ).val();
 					var comment_to_save = $.trim( textarea_val );
+
 					if ( textarea_val == 'I am God' && typeof( console ) == 'object' ) {
 						console.log( "Isn't God perfect?  Why the need to edit?" );
 					}
 					
 					//If the comment is blank, see if the user wants to delete their comment
 					if ( comment_to_save == '' && simple_comment_editing.allow_delete == true  ) {
+						
 						if ( confirm( simple_comment_editing.confirm_delete ) ) {
     						sce_delete_comment( element, ajax_params );
 							return;
-						} else {
+						} 
+						else {
 							$( '#sce-edit-comment' + ajax_params.cid  + ' textarea' ).val( sce.textareas[ ajax_params.cid  ] ); //revert value
-							$( element ).siblings( '.sce-loading' ).fadeOut( 'fast', function() {
-								$( element ).fadeIn( 'fast' );
-							} );
+							$( element ).siblings( '.sce-loading' ).velocity( 'fadeOut', { duration: 500, complete: function() {
+								$( element ).velocity( 'fadeIn', { duration: 250 } );
+							} } );
 							return;
 							/*
 							//todo - still buggy - defaults to ajax call / error message for now
@@ -101,6 +139,7 @@ jQuery( document ).ready( function( $ ) {
 					* @param int $post_id The Post ID
 					*/
 					jQuery( 'body' ).triggerHandler( 'sce.comment.save.pre', [ ajax_params.cid, ajax_params.pid ] );
+					
 					var ajax_save_params = {
 						action: 'sce_save_comment',
 						comment_content: comment_to_save, 
@@ -121,11 +160,16 @@ jQuery( document ).ready( function( $ ) {
 					ajax_save_params = wp.hooks.applyFilters( 'sce.comment.save.data', ajax_save_params );
 					
 					$.post( ajax_url, ajax_save_params, function( response ) {
-						$( element ).siblings( '.sce-loading' ).fadeOut( 'fast', function() {
-							$( element ).fadeIn( 'fast', function() {
+						
+						$( element ).siblings( '.sce-loading' ).velocity( 'fadeOut', { duration: 500, complete: function() {
+							
+							$( element ).velocity( 'slideDown', { duration: 500, complete: function() {
+								
 								if ( !response.errors ) {
-									$( '#sce-comment' + ajax_params.cid ).html( response.comment_text ); //Update comment HTML
+									
+									$( '#sce-comment' + ajax_params.cid ).html( response.comment_text ).velocity( 'fadeIn', { duration: 500 } ); //Update comment HTML
 									sce.textareas[ ajax_params.cid  ] = $( '#sce-edit-comment' + ajax_params.cid  + ' textarea' ).val(); //Update textarea placeholder
+									$( element ).velocity( 'fadeIn', { duration: 250 } );
 
 									/**
 									* Event: sce.comment.save
@@ -138,7 +182,8 @@ jQuery( document ).ready( function( $ ) {
 									* @param int $post_id The Post ID
 									*/
 									jQuery( 'body' ).triggerHandler( 'sce.comment.save', [ ajax_params.cid, ajax_params.pid, response ] );
-								} else {
+								} 
+								else {
 									//Output error, maybe kill interface
 									if ( response.remove == true ) {
 										//Remove event handlers
@@ -148,13 +193,13 @@ jQuery( document ).ready( function( $ ) {
 										//Remove elements
 										$( element ).parent().remove();
 									}
-									$( '#sce-edit-comment-status' + ajax_params.cid ).removeClass().addClass( 'sce-status error' ).html( response.error ).show();
+									$( '#sce-edit-comment-status' + ajax_params.cid ).removeClass().addClass( 'sce-status error' ).html( response.error ).velocity( 'fadeIn', { duration: 500 } );
 								}
-							} );
-						} );
+							} } );
+						} } );
 						
 					}, 'json' );
-				} );
+				} } );
 			} );
 						
 			//Load timers
