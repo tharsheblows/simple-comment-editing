@@ -12,21 +12,28 @@ jQuery( document ).ready( function( $ ) {
 			$( element ).on( 'click', 'a', function( e ) { 
 				
 				e.preventDefault();
+				$( element ).velocity( 'fadeOut', { duration: 100 } );
 
 				$( 'body' ).triggerHandler( 'sce.edit.link.clicked', [ ajax_params.cid, ajax_params.pid ] );
 				
 				//$( '#sce-edit-comment-status' + ajax_params.cid ).removeClass().addClass( 'sce-status' ).velocity( 'fadeOut', { duration: 500 } );
+				
+				var comment_height = $( element ).closest( 'article' ).outerHeight();
+				$( element ).closest( 'article' ).css( 'min-height', comment_height );
 
-				$( '#sce-comment' + ajax_params.cid ).velocity( 'fadeOut', { duration: 500 } );
-
-				//Hide the edit button and show the textarea
-				$( element ).siblings( '.sce-textarea' ).find( 'button' ).prop( 'disabled', false );
-				$( element ).siblings( '.sce-textarea' ).velocity( 'fadeIn', { duration: 500, complete:
-					function() {
-						$( element ).siblings( '.sce-textarea' ).find( 'textarea:first' ).focus();
-					} 
-				});
-				$( element ).velocity( 'fadeOut', { duration: 500 } );
+				$( '#sce-comment' + ajax_params.cid ).velocity( 'fadeOut', { 
+					duration: 500,  
+					complete: function(){
+						//Hide the edit button and show the textarea
+						$( element ).siblings( '.sce-textarea' ).find( 'button' ).prop( 'disabled', false );
+						$( element ).siblings( '.sce-textarea' ).velocity( 'fadeIn', { 
+							duration: 500, 
+							complete: function() {
+								$( element ).siblings( '.sce-textarea' ).find( 'textarea:first' ).focus();
+							} 
+						});
+					}
+				} );
 
 
 				// triggers a handler when the edit button is clicked
@@ -39,12 +46,19 @@ jQuery( document ).ready( function( $ ) {
 				
 				e.preventDefault();				
 				//Hide the textarea and show the edit button
-				$( element ).siblings( '.sce-textarea' ).velocity( 'fadeOut', { duration: 500 } );
-				$( element ).velocity( 'fadeIn', { 
-					duration: 250, 
-					complete: function(){
+				
+				$( 'body' ).triggerHandler( 'sce.edit.cancel', [ ajax_params.cid, ajax_params.pid ] );
+
+				$( element ).siblings( '.sce-textarea' ).velocity( 'fadeOut', { 
+					duration: 500,
+					complete: function(){ 
 						$( '#sce-edit-comment' + ajax_params.cid  + ' textarea' ).val( sce.textareas[ ajax_params.cid  ] );
-						$( '#sce-comment' + ajax_params.cid ).velocity( 'fadeIn', { duration: 500 } );
+						$( '#sce-comment' + ajax_params.cid ).velocity( 'fadeIn', { 
+							duration: 500,
+							complete: function(){
+								$( element ).velocity( 'fadeIn', { duration: 100 } );
+							}
+						 } );
 					}
 				} );
 			} );
